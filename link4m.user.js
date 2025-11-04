@@ -1,12 +1,14 @@
 // ==UserScript==
-// @name         D4FA3LT Bypass
+// @name         D4FA3LT Bypass 
 // @namespace    http://tampermonkey.net/
-// @version      2.2.0
-// @description  Premium Link4m Bypass with Success Notification
+// @version      2.3.0
+// @description  Premium Link4m Bypass with Statistics & Auto Language Detection
 // @author       D4FA3LT
 // @match        https://link4m.com/*
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
+// @grant        GM_setValue
+// @grant        GM_getValue
 // @grant        unsafeWindow
 // @connect      raw.githubusercontent.com 
 // @run-at       document-idle
@@ -16,6 +18,14 @@
     'use strict';
 
     const GITHUB_RAW_URL = 'https://raw.githubusercontent.com/ducknovis/link4m-bypass-source/refs/heads/main/code';
+    
+    // Auto-detect browser language
+    function detectBrowserLanguage() {
+        const lang = navigator.language || navigator.userLanguage;
+        if (lang.startsWith('vi')) return 'vi';
+        if (lang.startsWith('en')) return 'en';
+        return 'vi'; // default
+    }
     
     GM_addStyle(`
         @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap');
@@ -400,6 +410,44 @@
             to { transform: rotate(360deg); }
         }
         
+        .ultimate-stats {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(139, 92, 246, 0.1) 100%);
+            border-radius: 14px;
+            padding: 16px;
+            margin-bottom: 18px;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #667eea 0%, #f093fb 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .stat-label {
+            font-size: 10px;
+            color: rgba(255,255,255,0.6);
+            font-weight: 600;
+            margin-top: 4px;
+            text-transform: uppercase;
+        }
+        
+        .stat-time {
+            font-size: 9px;
+            color: rgba(255,255,255,0.5);
+            margin-top: 4px;
+        }
+        
         .ultimate-faq-item {
             background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(240, 147, 251, 0.05) 100%);
             border: 1px solid rgba(99, 102, 241, 0.2);
@@ -518,6 +566,10 @@
             #d4fa3lt-ultimate.collapsed {
                 width: 180px;
             }
+            
+            .ultimate-stats {
+                grid-template-columns: 1fr;
+            }
         }
     `);
 
@@ -525,6 +577,7 @@
         vi: {
             subtitle: 'ULTIMATE BYPASS',
             tabBypass: 'Bypass',
+            tabStats: 'Thống Kê',
             tabFAQ: 'FAQ',
             ready: 'Sẵn Sàng',
             readyDesc: 'Hệ thống hoạt động tối ưu',
@@ -532,6 +585,14 @@
             loading: 'Đang Xử Lý...',
             success: '✓ BYPASS THÀNH CÔNG!',
             error: '✗ LỖI KẾT NỐI',
+            totalBypass: 'Tổng Bypass',
+            lastBypass: 'Lần Cuối',
+            never: 'Chưa bao giờ',
+            times: 'lần',
+            justNow: 'Vừa xong',
+            minutesAgo: 'phút trước',
+            hoursAgo: 'giờ trước',
+            daysAgo: 'ngày trước',
             faq: [
                 { 
                     q: 'Bypass hoạt động thế nào?', 
@@ -563,6 +624,7 @@
         en: {
             subtitle: 'ULTIMATE BYPASS',
             tabBypass: 'Bypass',
+            tabStats: 'Statistics',
             tabFAQ: 'FAQ',
             ready: 'Ready',
             readyDesc: 'System running optimally',
@@ -570,6 +632,14 @@
             loading: 'Processing...',
             success: '✓ BYPASS SUCCESS!',
             error: '✗ CONNECTION ERROR',
+            totalBypass: 'Total Bypass',
+            lastBypass: 'Last Bypass',
+            never: 'Never',
+            times: 'times',
+            justNow: 'Just now',
+            minutesAgo: 'mins ago',
+            hoursAgo: 'hours ago',
+            daysAgo: 'days ago',
             faq: [
                 { 
                     q: 'How does the bypass work?', 
@@ -600,10 +670,24 @@
         }
     };
 
-    let currentLang = 'vi';
+    let currentLang = detectBrowserLanguage(); // Auto-detect on first load
     let isDragging = false;
     let offsetX = 0;
     let offsetY = 0;
+    let bypassCount = GM_getValue('bypassCount', 0);
+    let lastBypassTime = GM_getValue('lastBypassTime', null);
+
+    function formatTime(timestamp) {
+        if (!timestamp) return translations[currentLang].never;
+        
+        const now = Date.now();
+        const diff = Math.floor((now - timestamp) / 1000);
+        
+        if (diff < 60) return translations[currentLang].justNow;
+        if (diff < 3600) return Math.floor(diff / 60) + ' ' + translations[currentLang].minutesAgo;
+        if (diff < 86400) return Math.floor(diff / 3600) + ' ' + translations[currentLang].hoursAgo;
+        return Math.floor(diff / 86400) + ' ' + translations[currentLang].daysAgo;
+    }
 
     function init() {
         const panel = document.createElement('div');
@@ -636,6 +720,7 @@
             </div>
             <div class="ultimate-tabs">
                 <button class="ultimate-tab-btn active" data-tab="bypass">${translations[currentLang].tabBypass}</button>
+                <button class="ultimate-tab-btn" data-tab="stats">${translations[currentLang].tabStats}</button>
                 <button class="ultimate-tab-btn" data-tab="faq">${translations[currentLang].tabFAQ}</button>
             </div>
             <div class="ultimate-body">
@@ -654,6 +739,23 @@
                     <button class="ultimate-btn">
                         <span class="btn-text">${translations[currentLang].btnBypass}</span>
                     </button>
+                </div>
+                <div class="ultimate-tab-content" id="tab-stats">
+                    <div class="ultimate-stats">
+                        <div class="stat-item">
+                            <div class="stat-value" id="stat-count">${bypassCount}</div>
+                            <div class="stat-label">${translations[currentLang].totalBypass}</div>
+                            <div class="stat-label">${translations[currentLang].times}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="stat-time">–</div>
+                            <div class="stat-label">${translations[currentLang].lastBypass}</div>
+                            <div class="stat-time" id="stat-time-format">${formatTime(lastBypassTime)}</div>
+                        </div>
+                    </div>
+                    <div style="text-align: center; color: rgba(255,255,255,0.5); font-size: 11px;">
+                        💡 Thống kê được lưu trên device của bạn
+                    </div>
                 </div>
                 <div class="ultimate-tab-content" id="tab-faq">
                     ${renderFAQ()}
@@ -679,6 +781,8 @@
         const copyrightText = panel.querySelector('.copyright-text');
         const tabBtns = panel.querySelectorAll('.ultimate-tab-btn');
         const tabContents = panel.querySelectorAll('.ultimate-tab-content');
+        const statCount = panel.querySelector('#stat-count');
+        const statTimeFormat = panel.querySelector('#stat-time-format');
 
         header.addEventListener('mousedown', (e) => {
             if (e.target.closest('.ultimate-collapse')) return;
@@ -728,7 +832,8 @@
                 copyrightText.textContent = translations[currentLang].copyright;
                 
                 tabBtns[0].textContent = translations[currentLang].tabBypass;
-                tabBtns[1].textContent = translations[currentLang].tabFAQ;
+                tabBtns[1].textContent = translations[currentLang].tabStats;
+                tabBtns[2].textContent = translations[currentLang].tabFAQ;
                 
                 document.getElementById('tab-faq').innerHTML = renderFAQ();
                 setupFAQ();
@@ -752,6 +857,14 @@
                             btnText.textContent = translations[currentLang].success;
                             statusTitle.textContent = translations[currentLang].success;
                             statusDesc.textContent = 'Bypass hoàn tất thành công!';
+                            
+                            // Update statistics
+                            bypassCount++;
+                            lastBypassTime = Date.now();
+                            GM_setValue('bypassCount', bypassCount);
+                            GM_setValue('lastBypassTime', lastBypassTime);
+                            statCount.textContent = bypassCount;
+                            statTimeFormat.textContent = formatTime(lastBypassTime);
                         } catch (e) {
                             bypassBtn.classList.remove('loading');
                             bypassBtn.classList.add('error');
