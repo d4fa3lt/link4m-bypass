@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         D4FA3LT Bypass - Ultimate
+// @name         D4FA3LT Bypass
 // @namespace    http://tampermonkey.net/
 // @version      2.2.0
 // @description  Premium Link4m Bypass with Success Notification
