@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         D4FA3LT Bypass
 // @namespace    http://tampermonkey.net/
-// @version      2.3.1
-// @description  Idiot A.I Kid User Link4m Bypass
+// @version      2.3.2
+// @description  Premium Link4m Bypass with Statistics & Auto Language Detection
 // @author       D4FA3LT
 // @match        https://link4m.com/*
 // @grant        GM_addStyle
@@ -11,18 +11,125 @@
 // @grant        GM_getValue
 // @grant        unsafeWindow
 // @connect      raw.githubusercontent.com
+// @connect      cdn.jsdelivr.net
+// @connect      api.github.com
 // @run-at       document-idle
+// @updateURL    https://github.com/d4fa3lt/link4m-bypass/raw/refs/heads/main/link4m.user.js
+// @downloadURL  https://github.com/d4fa3lt/link4m-bypass/raw/refs/heads/main/link4m.user.js
 // ==/UserScript==
 
 (function() {
     'use strict';
 
-    const GITHUB_RAW_URL = 'https://raw.githubusercontent.com/ducknovis/link4m-bypass-source/refs/heads/main/code';
+    const CURRENT_VERSION = '2.4.0';
+
+    const MIRRORS = {
+        raw: 'https://raw.githubusercontent.com/ducknovis/link4m-bypass-source/refs/heads/main/code',
+        jsdelivr: 'https://cdn.jsdelivr.net/gh/ducknovis/link4m-bypass-source@main/code',
+        api: 'https://api.github.com/repos/ducknovis/link4m-bypass-source/contents/code?ref=main'
+    };
+
+    function getPreferredMirror() { return GM_getValue('preferredMirror', 'raw'); }
+    function setPreferredMirror(k) { GM_setValue('preferredMirror', k); }
+
+    function fetchBypassCodeSequential() {
+        const order = [getPreferredMirror(), 'raw', 'jsdelivr', 'api'].filter((v, i, a) => MIRRORS[v] && a.indexOf(v) === i);
+        let i = 0;
+        return new Promise((resolve, reject) => {
+            const next = () => {
+                if (i >= order.length) return reject(new Error('Mirror fail'));
+                const key = order[i++], url = MIRRORS[key];
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url,
+                    timeout: 12000,
+                    headers: key === 'api' ? { 'Accept': 'application/vnd.github+json' } : {},
+                    onload: (r) => {
+                        if (r.status === 200) {
+                            if (key === 'api') {
+                                try {
+                                    const j = JSON.parse(r.responseText);
+                                    if (j && j.content) return resolve(atob(j.content.replace(/\n/g, '')));
+                                } catch {}
+                                return next();
+                            }
+                            return resolve(r.responseText);
+                        }
+                        next();
+                    },
+                    onerror: next,
+                    ontimeout: next
+                });
+            };
+            next();
+        });
+    }
+
+    function extractMetaVersion(src) {
+        const m = src.match(/@version\s+([0-9]+\.[0-9]+\.[0-9]+)/);
+        return m ? m[1] : null;
+    }
+
+    async function checkForUpdates() {
+        try {
+            const urlOrder = [
+                'https://github.com/d4fa3lt/link4m-bypass/raw/refs/heads/main/link4m.user.js',
+                'https://cdn.jsdelivr.net/gh/d4fa3lt/link4m-bypass@main/link4m.user.js',
+                'https://api.github.com/repos/d4fa3lt/link4m-bypass/contents/link4m.user.js?ref=main'
+            ];
+            let src = null;
+            for (const u of urlOrder) {
+                const isApi = u.includes('api.github.com');
+                const res = await new Promise((resolve) => {
+                    GM_xmlhttpRequest({
+                        method: 'GET',
+                        url: u,
+                        timeout: 12000,
+                        headers: isApi ? { 'Accept': 'application/vnd.github+json' } : {},
+                        onload: (r) => resolve(r),
+                        onerror: () => resolve(null),
+                        ontimeout: () => resolve(null)
+                    });
+                });
+                if (res && res.status === 200) {
+                    if (isApi) {
+                        try {
+                            const j = JSON.parse(res.responseText);
+                            if (j && j.content) { src = atob(j.content.replace(/\n/g, '')); break; }
+                        } catch {}
+                    } else { src = res.responseText; break; }
+                }
+            }
+            if (!src) throw new Error('All update mirrors failed');
+            const remote = extractMetaVersion(src);
+            if (remote && remote !== CURRENT_VERSION) {
+                alert(`Có bản mới ${remote}. Bạn đang dùng ${CURRENT_VERSION}. Mở trang cập nhật để cài bản mới.`);
+                window.open('https://github.com/d4fa3lt/link4m-bypass/raw/refs/heads/main/link4m.user.js', '_blank');
+            } else {
+                alert('Bạn đang dùng phiên bản mới nhất.');
+            }
+        } catch (e) {
+            alert('Không kiểm tra được cập nhật. Thử lại sau.');
+        }
+    }
+
+    function dryRun() {
+        const checks = [
+            !!document.querySelector('a[href*="continue"], button[id*="continue"]'),
+            !!document.querySelector('form[action*="go"], form[action*="redirect"]'),
+            !!document.querySelector('[data-countdown], [id*="count"], [class*="count"]'),
+            !!document.querySelector('a[href*="getlink"], button[href*="getlink"], button[name*="getlink"]')
+        ];
+        const score = checks.filter(Boolean).length;
+        if (score >= 3) alert('Khả năng bypass: CAO');
+        else if (score === 2) alert('Khả năng bypass: TRUNG BÌNH');
+        else alert('Khả năng bypass: THẤP');
+    }
 
     function detectBrowserLanguage() {
         const lang = navigator.language || navigator.userLanguage;
-        if (lang.startsWith('vi')) return 'vi';
-        if (lang.startsWith('en')) return 'en';
+        if (lang && lang.startsWith('vi')) return 'vi';
+        if (lang && lang.startsWith('en')) return 'en';
         return 'vi';
     }
 
@@ -231,6 +338,15 @@
                             <span class="status-desc">${translations[currentLang].readyDesc}</span>
                         </div>
                     </div>
+                    <div class="row" style="display:flex;gap:8px;margin:10px 0;">
+                        <select id="mirror-select" class="ultimate-lang-btn" style="padding:8px 10px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);color:#fff;flex:1;">
+                            <option value="raw">Raw GitHub</option>
+                            <option value="jsdelivr">jsDelivr</option>
+                            <option value="api">GitHub API</option>
+                        </select>
+                        <button class="ultimate-lang-btn" id="btn-dry" style="flex:1;background:linear-gradient(135deg,#0ea5e9,#6366f1);color:#fff;border:1px solid rgba(255,255,255,0.15);">Thử trước</button>
+                        <button class="ultimate-lang-btn" id="btn-update" style="flex:1;background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.15);">Kiểm tra cập nhật</button>
+                    </div>
                     <button class="ultimate-btn">
                         <span class="btn-text">${translations[currentLang].btnBypass}</span>
                     </button>
@@ -259,7 +375,7 @@
             <div class="ultimate-footer">
                 <div class="ultimate-copyright">
                     <span class="copyright-text">${translations[currentLang].copyright}</span><br>
-                    Based on <a href="https://github.com/ducknovis" target="_blank">ducknovis</a> • AI-Powered UI
+                    Based on <a href="https://github.com/ducknovis" target="_blank">ducknovis</a>
                 </div>
             </div>
         `;
@@ -273,11 +389,15 @@
         const langBtns = panel.querySelectorAll('.ultimate-lang-btn');
         const statusTitle = panel.querySelector('.status-title');
         const statusDesc = panel.querySelector('.status-desc');
-        const copyrightText = panel.querySelector('.copyright-text');
         const tabBtns = panel.querySelectorAll('.ultimate-tab-btn');
         const tabContents = panel.querySelectorAll('.ultimate-tab-content');
         const statCount = panel.querySelector('#stat-count');
         const statTimeFormat = panel.querySelector('#stat-time-format');
+        const mirrorSelect = panel.querySelector('#mirror-select');
+        const btnDry = panel.querySelector('#btn-dry');
+        const btnUpdate = panel.querySelector('#btn-update');
+
+        mirrorSelect.value = getPreferredMirror();
 
         header.addEventListener('mousedown', (e) => {
             if (e.target.closest('.ultimate-collapse')) return;
@@ -323,77 +443,81 @@
                 statusTitle.textContent = translations[currentLang].ready;
                 statusDesc.textContent = translations[currentLang].readyDesc;
                 btnText.textContent = translations[currentLang].btnBypass;
-                copyrightText.textContent = translations[currentLang].copyright;
                 tabBtns[0].textContent = translations[currentLang].tabBypass;
                 tabBtns[1].textContent = translations[currentLang].tabStats;
                 tabBtns[2].textContent = translations[currentLang].tabFAQ;
-                document.getElementById('tab-faq').innerHTML = renderFAQ();
-                setupFAQ();
+                document.getElementById('tab-faq').innerHTML = (function(){
+                    return translations[currentLang].faq.map(item => `
+                        <div class="ultimate-faq-item">
+                            <div class="ultimate-faq-q">
+                                <span>${item.q}</span>
+                                <span class="ultimate-faq-icon">▼</span>
+                            </div>
+                            <div class="ultimate-faq-a">${item.a}</div>
+                        </div>
+                    `).join('');
+                })();
+                (function setupFAQ() {
+                    const faqItems = panel.querySelectorAll('.ultimate-faq-item');
+                    faqItems.forEach(item => {
+                        const q = item.querySelector('.ultimate-faq-q');
+                        q.onclick = () => item.classList.toggle('open');
+                    });
+                })();
             });
         });
 
-        bypassBtn.addEventListener('click', function() {
+        mirrorSelect.addEventListener('change', () => {
+            setPreferredMirror(mirrorSelect.value);
+        });
+
+        btnDry.addEventListener('click', () => {
+            dryRun();
+        });
+
+        btnUpdate.addEventListener('click', () => {
+            checkForUpdates();
+        });
+
+        bypassBtn.addEventListener('click', async function() {
             bypassBtn.classList.add('loading');
             bypassBtn.disabled = true;
             btnText.innerHTML = `<div class="ultimate-spinner"></div>${translations[currentLang].loading}`;
-            GM_xmlhttpRequest({
-                method: "GET",
-                url: GITHUB_RAW_URL,
-                onload: function(response) {
-                    if (response.status === 200) {
-                        try {
-                            unsafeWindow.eval(response.responseText.trim());
-                            bypassBtn.classList.remove('loading');
-                            bypassBtn.classList.add('success');
-                            btnText.textContent = translations[currentLang].success;
-                            statusTitle.textContent = translations[currentLang].success;
-                            statusDesc.textContent = 'Bypass hoàn tất thành công!';
-                            bypassCount++;
-                            lastBypassTime = Date.now();
-                            GM_setValue('bypassCount', bypassCount);
-                            GM_setValue('lastBypassTime', lastBypassTime);
-                            statCount.textContent = bypassCount;
-                            statTimeFormat.textContent = formatTime(lastBypassTime);
-                        } catch (e) {
-                            bypassBtn.classList.remove('loading');
-                            bypassBtn.classList.add('error');
-                            btnText.textContent = translations[currentLang].error;
-                        }
-                    } else {
-                        bypassBtn.classList.remove('loading');
-                        bypassBtn.classList.add('error');
-                        btnText.textContent = translations[currentLang].error;
-                    }
-                    setTimeout(() => {
-                        bypassBtn.className = 'ultimate-btn';
-                        btnText.textContent = translations[currentLang].btnBypass;
-                        bypassBtn.disabled = false;
-                        statusTitle.textContent = translations[currentLang].ready;
-                        statusDesc.textContent = translations[currentLang].readyDesc;
-                    }, 3500);
-                },
-                onerror: function() {
-                    bypassBtn.classList.remove('loading');
-                    bypassBtn.classList.add('error');
-                    btnText.textContent = translations[currentLang].error;
-                    setTimeout(() => {
-                        bypassBtn.className = 'ultimate-btn';
-                        btnText.textContent = translations[currentLang].btnBypass;
-                        bypassBtn.disabled = false;
-                    }, 3500);
-                }
-            });
+            try {
+                const code = await fetchBypassCodeSequential();
+                unsafeWindow.eval(code.trim());
+                bypassBtn.classList.remove('loading');
+                bypassBtn.classList.add('success');
+                btnText.textContent = translations[currentLang].success;
+                statusTitle.textContent = translations[currentLang].success;
+                statusDesc.textContent = currentLang === 'vi' ? 'Bypass hoàn tất thành công!' : 'Bypass completed successfully!';
+                bypassCount++;
+                lastBypassTime = Date.now();
+                GM_setValue('bypassCount', bypassCount);
+                GM_setValue('lastBypassTime', lastBypassTime);
+                statCount.textContent = bypassCount;
+                statTimeFormat.textContent = formatTime(lastBypassTime);
+            } catch (e) {
+                bypassBtn.classList.remove('loading');
+                bypassBtn.classList.add('error');
+                btnText.textContent = translations[currentLang].error;
+            }
+            setTimeout(() => {
+                bypassBtn.className = 'ultimate-btn';
+                btnText.textContent = translations[currentLang].btnBypass;
+                bypassBtn.disabled = false;
+                statusTitle.textContent = translations[currentLang].ready;
+                statusDesc.textContent = translations[currentLang].readyDesc;
+            }, 3500);
         });
 
-        function setupFAQ() {
+        (function setupFAQ() {
             const faqItems = panel.querySelectorAll('.ultimate-faq-item');
             faqItems.forEach(item => {
                 const q = item.querySelector('.ultimate-faq-q');
                 q.onclick = () => item.classList.toggle('open');
             });
-        }
-
-        setupFAQ();
+        })();
     }
 
     init();
